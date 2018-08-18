@@ -118,6 +118,121 @@ impl<K,V> HashMap<K,V>
         })
     }
 
+
+    pub fn entry(&mut self, k: K) -> Entry<K, V> {
+        self.gc();
+
+        let remove = if let Some((_, marker)) = self.v.get(&k) {
+            marker.load(Ordering::SeqCst)
+        } else {
+            false
+        };
+
+        if remove {
+            self.v.remove(&k);
+        }
+
+        match self.v.entry(k) {
+            std::collections::hash_map::Entry::Occupied(n) => {
+                Entry::Occupied(OccupiedEntry{n})
+            },
+            std::collections::hash_map::Entry::Vacant(n) => {
+                Entry::Vacant(VacantEntry{n, gc: self.gc.clone()})
+            },
+        }
+    }
+}
+
+
+pub struct OccupiedEntry<'a, K: 'a, V: 'a>{
+    n: std::collections::hash_map::OccupiedEntry<'a, K, (V,Arc<AtomicBool>)>,
+}
+
+pub struct VacantEntry<'a, K: 'a, V: 'a>{
+    n: std::collections::hash_map::VacantEntry<'a, K, (V,Arc<AtomicBool>)>,
+    gc: Arc<AtomicUsize>,
+}
+
+pub enum Entry<'a, K: 'a, V: 'a> {
+    /// An occupied entry.
+    Occupied(OccupiedEntry<'a, K, V>),
+
+    /// A vacant entry.
+    Vacant(VacantEntry<'a, K, V>),
+}
+
+
+impl<'a, K, V> OccupiedEntry<'a, K, V> {
+    pub fn into_mut(self) -> &'a mut V {
+        &mut self.n.into_mut().0
+    }
+}
+
+impl<'a, K, V> VacantEntry<'a, K, V> {
+    pub fn insert_with<F: FnOnce(MarkOnDrop) -> V>(self, value: F) -> &'a mut V {
+        let mark = MarkOnDrop {
+            marker: Arc::new(AtomicBool::new(false)),
+            gc:     self.gc.clone(),
+        };
+        let marker = mark.marker.clone();
+        &mut (self.n.insert((value(mark), marker)).0)
+    }
+}
+
+impl<'a, K, V> Entry<'a, K, V> {
+    pub fn or_insert_with<F: FnOnce(MarkOnDrop) -> V>(self, default: F) -> &'a mut V {
+        match self {
+            Entry::Occupied(entry)  => entry.into_mut(),
+            Entry::Vacant(entry)    => {
+                entry.insert_with(default)
+            }
+        }
+    }
+}
+
+
+
+
+
+#[test]
+fn entry() {
+    let mut wm : HashMap<u32, u8> = HashMap::new();
+
+    let mut holdme = None;
+
+    {
+        let val = wm.entry(1).or_insert_with(|mark|{
+            holdme = Some(mark);
+            2
+        });
+        *val = 3;
+    }
+
+    assert_eq!(wm.get(&1), Some(&3));
+    drop(holdme);
+    assert_eq!(wm.get(&1), None);
+
+    {
+        let val = wm.entry(1).or_insert_with(|mark|2);
+        *val = 3;
+    }
+
+    assert_eq!(wm.get(&1), None);
+}
+
+#[test]
+fn foo() {
+    let mut wm : HashMap<u32, &'static str> = HashMap::new();
+    let marks : Vec<MarkOnDrop> = (0..100000).map(|i|{
+        let (mark, _) = wm.insert(i + 100000, "world");
+        drop(mark);
+        assert_eq!(wm.get(&(i + 100000)), None);
+        let (mark, _) = wm.insert(i, "world");
+        mark
+    }).collect();
+    assert_eq!(wm.get(&1), Some(&"world"));
+    drop(marks);
+    assert_eq!(wm.get(&1), None);
 }
 
 
