@@ -49,7 +49,7 @@ impl<K,V> HashMap<K,V>
     pub fn insert(&mut self, k: K, v: V) -> (MarkOnDrop, Option<V>)
         where K: std::cmp::Eq + std::hash::Hash
     {
-        self.gc();
+        self.maybe_gc();
         let mark = MarkOnDrop {
             marker: Arc::new(AtomicBool::new(false)),
             gc:     self.gc.clone(),
@@ -106,10 +106,13 @@ impl<K,V> HashMap<K,V>
     }
 
 
-    pub fn gc(&mut self) {
-        if self.gc.load(Ordering::SeqCst) < self.len() / 2 {
-            return;
+    fn maybe_gc(&mut self) {
+        if self.gc.load(Ordering::SeqCst) > self.len() / 2 {
+            self.gc();
         }
+    }
+
+    pub fn gc(&mut self) {
         self.gc.store(0, Ordering::SeqCst);
         //TODO to make gc more efficient, there should be multiple gc flags marking "regions"
         //but for that we need to modify the hashmap iterator
@@ -120,7 +123,7 @@ impl<K,V> HashMap<K,V>
 
 
     pub fn entry(&mut self, k: K) -> Entry<K, V> {
-        self.gc();
+        self.maybe_gc();
 
         let remove = if let Some((_, marker)) = self.v.get(&k) {
             marker.load(Ordering::SeqCst)
