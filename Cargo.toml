@@ -1,6 +1,6 @@
 [package]
 name = "gcmap"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Arvid E. Picciani <aep@exys.org>"]
 license = "MIT"
 description = "HashMap which removes entries when an external marker is dropped"

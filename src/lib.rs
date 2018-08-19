@@ -144,6 +144,27 @@ impl<K,V> HashMap<K,V>
             },
         }
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+        self.v.iter().filter_map(|(k, (v,marker))|{
+            if marker.load(Ordering::SeqCst) == true {
+                None
+            } else {
+                Some((k,v))
+            }
+        })
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
+        self.v.iter_mut().filter_map(|(k, (v,marker))|{
+            if marker.load(Ordering::SeqCst) == true {
+                None
+            } else {
+                Some((k,v))
+            }
+        })
+    }
+
 }
 
 
@@ -195,6 +216,17 @@ impl<'a, K, V> Entry<'a, K, V> {
 
 
 
+#[test]
+fn iter() {
+    let mut wm : HashMap<u32, u8> = HashMap::new();
+    let (mark, _) = wm.insert(1, 7);
+    drop(mark);
+    let (mark, _) = wm.insert(2, 8);
+
+    let mut iter = wm.iter();
+    assert_eq!(iter.next(), Some((&2, &8)));
+    assert_eq!(iter.next(), None);
+}
 
 
 #[test]
