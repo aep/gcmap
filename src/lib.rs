@@ -84,7 +84,7 @@ impl<K,V> HashMap<K,V>
         self.v.get(k).map(|(v,_)|v)
     }
 
-    pub fn get_mut<Q: ?Sized>(&mut self, k: &mut Q) -> Option<&mut V>
+    pub fn get_mut<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
         where Q: std::cmp::Eq + std::hash::Hash,
               K: std::borrow::Borrow<Q>,
     {
